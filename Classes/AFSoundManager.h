@@ -19,7 +19,9 @@ typedef void (^progressBlock)(int percentage, CGFloat elapsedTime, CGFloat timeR
 
 +(instancetype)sharedManager;
 
-@property (nonatomic, strong) AVAudioPlayer *player;
+@property (nonatomic, strong) AVAudioPlayer *audioPlayer;
+@property (nonatomic, strong) AVPlayer *player;
+@property (nonatomic, strong) AVAudioRecorder *recorder;
 
 -(void)startPlayingLocalFileWithName:(NSString *)name andBlock:(progressBlock)block;
 -(void)startStreamingRemoteAudioFromURL:(NSString *)url andBlock:(progressBlock)block;
@@ -30,9 +32,17 @@ typedef void (^progressBlock)(int percentage, CGFloat elapsedTime, CGFloat timeR
 -(void)restart;
 
 -(void)changeVolumeToValue:(CGFloat)volume;
+-(void)changeSpeedToRate:(CGFloat)rate;
 -(void)moveToSecond:(int)second;
 -(void)moveToSection:(CGFloat)section;
 -(NSDictionary *)retrieveInfoForCurrentPlaying;
+
+-(void)startRecordingAudioWithFileName:(NSString *)name andExtension:(NSString *)extension shouldStopAtSecond:(NSTimeInterval)second;
+-(void)pauseRecording;
+-(void)resumeRecording;
+-(void)stopAndSaveRecording;
+-(void)deleteRecording;
+-(NSInteger)timeRecorded;
 
 -(BOOL)areHeadphonesConnected;
 -(void)forceOutputToDefaultDevice;

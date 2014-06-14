@@ -35,25 +35,24 @@
     NSURL *fileURL = [NSURL fileURLWithPath:filePath];
     NSError *error = nil;
     
-    _player = [[AVAudioPlayer alloc]initWithContentsOfURL:fileURL error:&error];
-    [_player play];
+    _audioPlayer = [[AVAudioPlayer alloc]initWithContentsOfURL:fileURL error:&error];
+    [_audioPlayer play];
     
-    CGFloat blockUpdateTime = (_player.duration / 100);
     __block int percentage = 0;
     
-    _timer = [NSTimer scheduledTimerWithTimeInterval:blockUpdateTime block:^{
+    _timer = [NSTimer scheduledTimerWithTimeInterval:1 block:^{
         
         if (percentage != 100) {
             
-            percentage = (int)((_player.currentTime * 100)/_player.duration);
-            int timeRemaining = _player.duration - _player.currentTime;
+            percentage = (int)((_audioPlayer.currentTime * 100)/_audioPlayer.duration);
+            int timeRemaining = _audioPlayer.duration - _audioPlayer.currentTime;
             
-            block(percentage, _player.currentTime, timeRemaining, error, NO);
+            block(percentage, _audioPlayer.currentTime, timeRemaining, error, NO);
         } else {
             
-            int timeRemaining = _player.duration - _player.currentTime;
+            int timeRemaining = _audioPlayer.duration - _audioPlayer.currentTime;
 
-            block(100, _player.currentTime, timeRemaining, error, YES);
+            block(100, _audioPlayer.currentTime, timeRemaining, error, YES);
             
             [_timer invalidate];
         }
@@ -63,42 +62,48 @@
 -(void)startStreamingRemoteAudioFromURL:(NSString *)url andBlock:(progressBlock)block {
     
     NSURL *streamingURL = [NSURL URLWithString:url];
-    NSData *streamingData = [NSData dataWithContentsOfURL:streamingURL];
     NSError *error = nil;
     
-    _player = [[AVAudioPlayer alloc]initWithData:streamingData error:&error];
+    _player = [[AVPlayer alloc]initWithURL:streamingURL];
     [_player play];
     
-    CGFloat blockUpdateTime = (_player.duration / 100);
-    __block int percentage = 0;
+    if (!error) {
     
-    _timer = [NSTimer scheduledTimerWithTimeInterval:blockUpdateTime block:^{
+        __block int percentage = 0;
         
-        if (percentage != 100) {
+        _timer = [NSTimer scheduledTimerWithTimeInterval:1 block:^{
             
-            percentage = (int)((_player.currentTime * 100)/_player.duration);
-            int timeRemaining = _player.duration - _player.currentTime;
-            
-            block(percentage, _player.currentTime, timeRemaining, error, NO);
-        } else {
-            
-            int timeRemaining = _player.duration - _player.currentTime;
-            
-            block(100, _player.currentTime, timeRemaining, error, YES);
-            
-            [_timer invalidate];
-        }
-    } repeats:YES];
+            if (percentage != 100) {
+                
+                percentage = (int)((CMTimeGetSeconds(_player.currentItem.currentTime) * 100)/CMTimeGetSeconds(_player.currentItem.duration));
+                int timeRemaining = CMTimeGetSeconds(_player.currentItem.duration) - CMTimeGetSeconds(_player.currentItem.currentTime);
+                
+                block(percentage, CMTimeGetSeconds(_player.currentItem.currentTime), timeRemaining, error, NO);
+            } else {
+                
+                int timeRemaining = CMTimeGetSeconds(_player.currentItem.duration) - CMTimeGetSeconds(_player.currentItem.currentTime);
+                
+                block(100, CMTimeGetSeconds(_player.currentItem.currentTime), timeRemaining, error, YES);
+                
+                [_timer invalidate];
+            }
+        } repeats:YES];
+    } else {
+        
+        block(0, 0, 0, error, YES);
+        [_audioPlayer stop];
+    }
+    
 }
 
 -(NSDictionary *)retrieveInfoForCurrentPlaying {
     
-    if (_player.url) {
+    if (_audioPlayer.url) {
         
-        NSArray *parts = [_player.url.absoluteString componentsSeparatedByString:@"/"];
+        NSArray *parts = [_audioPlayer.url.absoluteString componentsSeparatedByString:@"/"];
         NSString *filename = [parts objectAtIndex:[parts count]-1];
         
-        NSDictionary *info = @{@"name": filename, @"duration": [NSNumber numberWithInt:_player.duration], @"elapsed time": [NSNumber numberWithInt:_player.currentTime], @"remaining time": [NSNumber numberWithInt:(_player.duration - _player.currentTime)], @"volume": [NSNumber numberWithFloat:_player.volume]};
+        NSDictionary *info = @{@"name": filename, @"duration": [NSNumber numberWithInt:_audioPlayer.duration], @"elapsed time": [NSNumber numberWithInt:_audioPlayer.currentTime], @"remaining time": [NSNumber numberWithInt:(_audioPlayer.duration - _audioPlayer.currentTime)], @"volume": [NSNumber numberWithFloat:_audioPlayer.volume]};
         
         return info;
     } else {
@@ -107,35 +112,91 @@
 }
 
 -(void)pause {
+    [_audioPlayer pause];
     [_player pause];
     [_timer pauseTimer];
 }
 
 -(void)resume {
+    [_audioPlayer play];
     [_player play];
     [_timer resumeTimer];
 }
 
 -(void)stop {
-    [_player stop];
+    [_audioPlayer stop];
+    _player = nil;
     [_timer pauseTimer];
 }
 
 -(void)restart {
-    [_player setCurrentTime:0];
+    [_audioPlayer setCurrentTime:0];
+    
+    int32_t timeScale = _player.currentItem.asset.duration.timescale;
+    [_player seekToTime:CMTimeMake(0.000000, timeScale)];
 }
 
 -(void)moveToSecond:(int)second {
-    [_player setCurrentTime:second];
+    [_audioPlayer setCurrentTime:second];
+    
+    int32_t timeScale = _player.currentItem.asset.duration.timescale;
+    [_player seekToTime:CMTimeMakeWithSeconds((Float64)second, timeScale) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
 }
 
 -(void)moveToSection:(CGFloat)section {
-    int audioSection = _player.duration * section;
-    [_player setCurrentTime:audioSection];
+    int audioPlayerSection = _audioPlayer.duration * section;
+    [_audioPlayer setCurrentTime:audioPlayerSection];
+    
+    int32_t timeScale = _player.currentItem.asset.duration.timescale;
+    Float64 playerSection = CMTimeGetSeconds(_player.currentItem.duration) * section;
+    [_player seekToTime:CMTimeMakeWithSeconds(playerSection, timeScale) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+}
+
+-(void)changeSpeedToRate:(CGFloat)rate {
+    _audioPlayer.rate = rate;
+    _player.rate = rate;
 }
 
 -(void)changeVolumeToValue:(CGFloat)volume {
+    _audioPlayer.volume = volume;
     _player.volume = volume;
+}
+
+-(void)startRecordingAudioWithFileName:(NSString *)name andExtension:(NSString *)extension shouldStopAtSecond:(NSTimeInterval)second {
+    
+    _recorder = [[AVAudioRecorder alloc]initWithURL:[NSURL fileURLWithPath:[NSString stringWithFormat:@"%@/%@.%@", [NSHomeDirectory() stringByAppendingString:@"/Documents"], name, extension]] settings:nil error:nil];
+    
+    if (second == 0 && !second) {
+        [_recorder record];
+    } else {
+        [_recorder recordForDuration:second];
+    }
+}
+
+-(void)pauseRecording {
+    
+    if ([_recorder isRecording]) {
+        [_recorder pause];
+    }
+}
+
+-(void)resumeRecording {
+    
+    if (![_recorder isRecording]) {
+        [_recorder record];
+    }
+}
+
+-(void)stopAndSaveRecording {
+    [_recorder stop];
+}
+
+-(void)deleteRecording {
+    [_recorder deleteRecording];
+}
+
+-(NSInteger)timeRecorded {
+    return [_recorder currentTime];
 }
 
 -(BOOL)areHeadphonesConnected {
@@ -171,7 +232,7 @@
 +(id)scheduledTimerWithTimeInterval:(NSTimeInterval)inTimeInterval block:(void (^)())inBlock repeats:(BOOL)inRepeats {
     
     void (^block)() = [inBlock copy];
-    id ret = [self scheduledTimerWithTimeInterval:inTimeInterval target:self selector:@selector(jdExecuteSimpleBlock:) userInfo:block repeats:inRepeats];
+    id ret = [self scheduledTimerWithTimeInterval:inTimeInterval target:self selector:@selector(executeSimpleBlock:) userInfo:block repeats:inRepeats];
     
     return ret;
 }
@@ -179,14 +240,14 @@
 +(id)timerWithTimeInterval:(NSTimeInterval)inTimeInterval block:(void (^)())inBlock repeats:(BOOL)inRepeats {
     
     void (^block)() = [inBlock copy];
-    id ret = [self timerWithTimeInterval:inTimeInterval target:self selector:@selector(jdExecuteSimpleBlock:) userInfo:block repeats:inRepeats];
+    id ret = [self timerWithTimeInterval:inTimeInterval target:self selector:@selector(executeSimpleBlock:) userInfo:block repeats:inRepeats];
     
     return ret;
 }
 
-+(void)jdExecuteSimpleBlock:(NSTimer *)inTimer {
++(void)executeSimpleBlock:(NSTimer *)inTimer {
     
-    if([inTimer userInfo]) {
+    if ([inTimer userInfo]) {
         void (^block)() = (void (^)())[inTimer userInfo];
         block();
     }
